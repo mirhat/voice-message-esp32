@@ -258,7 +258,8 @@
         import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
         
         const BUCKET_NAME = 'voice-messages';
-        const FILE_NAME = 'latest.wav';  // Changed to WAV
+        const FILE_NAME = 'latest.wav';
+        const TIMESTAMP_FILE = 'timestamp.txt';  // Track upload time
         
         let supabaseClient;
         
@@ -283,9 +284,9 @@
         
         // WAV conversion functions
         function audioBufferToWav(buffer) {
-            const numChannels = 1; // Mono
+            const numChannels = 1;
             const sampleRate = buffer.sampleRate;
-            const format = 1; // PCM
+            const format = 1;
             const bitDepth = 16;
             
             const bytesPerSample = bitDepth / 8;
@@ -299,7 +300,6 @@
             const arrayBuffer = new ArrayBuffer(totalLength);
             const view = new DataView(arrayBuffer);
             
-            // Write WAV header
             writeString(view, 0, 'RIFF');
             view.setUint32(4, totalLength - 8, true);
             writeString(view, 8, 'WAVE');
@@ -314,7 +314,6 @@
             writeString(view, 36, 'data');
             view.setUint32(40, dataLength, true);
             
-            // Write audio data
             let offset = 44;
             for (let i = 0; i < data.length; i++) {
                 const sample = Math.max(-1, Math.min(1, data[i]));
@@ -339,7 +338,6 @@
             return new Blob([wavBuffer], { type: 'audio/wav' });
         }
         
-        // Load saved config on page load
         window.addEventListener('load', () => {
             const url = localStorage.getItem('supabaseUrl');
             const key = localStorage.getItem('supabaseKey');
@@ -405,7 +403,7 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ 
                     audio: {
                         channelCount: 1,
-                        sampleRate: 16000,  // Lower for smaller files
+                        sampleRate: 16000,
                         echoCancellation: true,
                         noiseSuppression: true
                     }
@@ -422,7 +420,6 @@
                     clearInterval(timerInterval);
                     const webmBlob = new Blob(audioChunks, { type: 'audio/webm' });
                     
-                    // Convert to WAV
                     setStatus('Converting to WAV...', 'uploading');
                     try {
                         const wavBlob = await convertToWav(webmBlob);
@@ -465,7 +462,8 @@
                 setStatus('Uploading...', 'uploading');
                 recordBtn.disabled = true;
                 
-                const { data, error } = await supabaseClient.storage
+                // Upload audio file
+                const { error: audioError } = await supabaseClient.storage
                     .from(BUCKET_NAME)
                     .upload(FILE_NAME, blob, {
                         cacheControl: '0',
@@ -473,7 +471,21 @@
                         contentType: 'audio/wav'
                     });
                 
-                if (error) throw error;
+                if (audioError) throw audioError;
+                
+                // Upload timestamp file to trigger ESP32 detection
+                const timestamp = new Date().toISOString();
+                const timestampBlob = new Blob([timestamp], { type: 'text/plain' });
+                
+                const { error: tsError } = await supabaseClient.storage
+                    .from(BUCKET_NAME)
+                    .upload(TIMESTAMP_FILE, timestampBlob, {
+                        cacheControl: '0',
+                        upsert: true,
+                        contentType: 'text/plain'
+                    });
+                
+                if (tsError) throw tsError;
                 
                 setStatus('✓ Uploaded!', 'success');
                 
