@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice Message for ESP32</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 400px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 24px;
+        }
+
+        .config {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .config h3 {
+            margin-bottom: 15px;
+            color: #666;
+            font-size: 16px;
+        }
+
+        .config input {
+            width: 100%;
+            padding: 12px;
+            margin: 8px 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: monospace;
+        }
+
+        .config button {
+            width: 100%;
+            padding: 12px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 10px;
+            font-size: 16px;
+        }
+
+        .config button:hover {
+            background: #5568d3;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        
+        .status.idle {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+        
+        .status.recording {
+            background: #ffebee;
+            color: #c62828;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        
+        .status.uploading {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        
+        .status.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .status.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+        
+        button {
+            width: 100%;
+            padding: 18px;
+            font-size: 18px;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 15px;
+        }
+        
+        #recordBtn {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        #recordBtn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
+        }
+        
+        #recordBtn.recording {
+            background: #f44336;
+        }
+        
+        #recordBtn.recording:hover {
+            background: #da190b;
+        }
+        
+        #recordBtn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .timer {
+            text-align: center;
+            font-size: 48px;
+            font-weight: bold;
+            color: #333;
+            margin: 20px 0;
+            font-variant-numeric: tabular-nums;
+        }
+        
+        .latest {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 10px;
+        }
+        
+        .latest h3 {
+            margin-bottom: 15px;
+            color: #666;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+        
+        audio {
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .info {
+            font-size: 12px;
+            color: #999;
+            margin-top: 10px;
+        }
+
+        .settings-btn {
+            background: #666;
+            padding: 10px;
+            font-size: 14px;
+            margin-top: 20px;
+        }
+
+        .settings-btn:hover {
+            background: #555;
+        }
+
+        .help {
+            margin-top: 20px;
+            padding: 15px;
+            background: #e3f2fd;
+            border-radius: 8px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .help a {
+            color: #1976d2;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Voice Message</h1>
+        
+        <!-- Configuration Panel -->
+        <div class="config" id="configPanel">
+            <h3>Supabase Configuration</h3>
+            <input type="text" id="supabaseUrl" placeholder="https://xxxxx.supabase.co">
+            <input type="password" id="supabaseKey" placeholder="Supabase Anon Key">
+            <button onclick="saveConfig()">💾 Save & Start</button>
+            
+            <div class="help">
+                <strong>How to get these:</strong><br>
+                1. Go to <a href="https://supabase.com" target="_blank">supabase.com</a><br>
+                2. Create project → Settings → API<br>
+                3. Copy "Project URL" and "anon public" key
+            </div>
+        </div>
+
+        <!-- Main App -->
+        <div id="mainApp" class="hidden">
+            <div id="status" class="status idle">Ready to record</div>
+            
+            <div class="timer" id="timer">00:00</div>
+            
+            <button id="recordBtn">🎙️ Start Recording</button>
+            
+            <div class="latest" id="latestSection" style="display: none;">
+                <h3>Latest Recording</h3>
+                <audio id="audioPlayer" controls></audio>
+                <div class="info" id="fileInfo"></div>
+            </div>
+
+            <button class="settings-btn" onclick="showConfig()">⚙️ Settings</button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const BUCKET_NAME = 'voice-messages';
+        const FILE_NAME = 'latest.webm';
+        
+        let supabase;
+        
+        // UI Elements
+        const configPanel = document.getElementById('configPanel');
+        const mainApp = document.getElementById('mainApp');
+        const recordBtn = document.getElementById('recordBtn');
+        const status = document.getElementById('status');
+        const timer = document.getElementById('timer');
+        const latestSection = document.getElementById('latestSection');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const fileInfo = document.getElementById('fileInfo');
+        
+        // Recording state
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+        let startTime;
+        let timerInterval;
+        
+        // Load saved config on page load
+        window.addEventListener('load', () => {
+            const url = localStorage.getItem('supabaseUrl');
+            const key = localStorage.getItem('supabaseKey');
+            
+            if (url && key) {
+                document.getElementById('supabaseUrl').value = url;
+                document.getElementById('supabaseKey').value = key;
+                initSupabase(url, key);
+                showMain();
+            }
+        });
+        
+        function saveConfig() {
+            const url = document.getElementById('supabaseUrl').value.trim();
+            const key = document.getElementById('supabaseKey').value.trim();
+            
+            if (!url || !key) {
+                alert('Please fill in both fields');
+                return;
+            }
+            
+            localStorage.setItem('supabaseUrl', url);
+            localStorage.setItem('supabaseKey', key);
+            
+            initSupabase(url, key);
+            showMain();
+        }
+        
+        function initSupabase(url, key) {
+            supabase = window.supabase.createClient(url, key);
+        }
+        
+        function showConfig() {
+            configPanel.classList.remove('hidden');
+            mainApp.classList.add('hidden');
+        }
+        
+        function showMain() {
+            configPanel.classList.add('hidden');
+            mainApp.classList.remove('hidden');
+            checkExisting();
+        }
+        
+        function setStatus(message, type) {
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+        
+        function updateTimer() {
+            const elapsed = Date.now() - startTime;
+            const seconds = Math.floor(elapsed / 1000);
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            timer.textContent = `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+        }
+        
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        sampleRate: 44100
+                    }
+                });
+                
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.onstop = async () => {
+                    clearInterval(timerInterval);
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    await uploadAudio(audioBlob);
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                
+                mediaRecorder.start();
+                isRecording = true;
+                startTime = Date.now();
+                timerInterval = setInterval(updateTimer, 100);
+                
+                recordBtn.textContent = '⏹️ Stop Recording';
+                recordBtn.classList.add('recording');
+                setStatus('Recording... 🔴', 'recording');
+                
+            } catch (err) {
+                console.error('Microphone error:', err);
+                setStatus('❌ Microphone access denied', 'error');
+            }
+        }
+        
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+                isRecording = false;
+                recordBtn.textContent = '🎙️ Start Recording';
+                recordBtn.classList.remove('recording');
+                timer.textContent = '00:00';
+            }
+        }
+        
+        async function uploadAudio(blob) {
+            try {
+                setStatus('Uploading...', 'uploading');
+                recordBtn.disabled = true;
+                
+                const { data, error } = await supabase.storage
+                    .from(BUCKET_NAME)
+                    .upload(FILE_NAME, blob, {
+                        cacheControl: '0',
+                        upsert: true
+                    });
+                
+                if (error) throw error;
+                
+                setStatus('✓ Uploaded!', 'success');
+                
+                audioPlayer.src = URL.createObjectURL(blob);
+                fileInfo.textContent = `Uploaded: ${new Date().toLocaleTimeString()}`;
+                latestSection.style.display = 'block';
+                
+                setTimeout(() => {
+                    setStatus('Ready to record', 'idle');
+                }, 2000);
+                
+            } catch (err) {
+                console.error('Upload error:', err);
+                setStatus('❌ Upload failed: ' + err.message, 'error');
+            } finally {
+                recordBtn.disabled = false;
+            }
+        }
+        
+        async function checkExisting() {
+            try {
+                const { data } = supabase.storage
+                    .from(BUCKET_NAME)
+                    .getPublicUrl(FILE_NAME);
+                
+                if (data) {
+                    audioPlayer.src = data.publicUrl + '?t=' + Date.now();
+                    latestSection.style.display = 'block';
+                }
+            } catch (err) {
+                console.log('No existing recording');
+            }
+        }
+        
+        recordBtn.addEventListener('click', () => {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        });
+    </script>
+</body>
+</html>
